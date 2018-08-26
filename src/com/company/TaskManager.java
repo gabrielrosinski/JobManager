@@ -16,6 +16,8 @@ public class TaskManager {
     private BlockingQueue<Job> normalPriorityQueue;
     private BlockingQueue<Job> highPriorityQueue;
 
+    private final Object lock = new Object();
+
 
     //This array will hold all the reoccurring jobs and will insert them to there respective queues
     //when the interval time is reached
@@ -28,6 +30,10 @@ public class TaskManager {
 
         reoccurringJobsChecker();
     }
+
+
+
+    //Public API
 
     public boolean insertJob(int id, int priorty) throws  InterruptedException{
 
@@ -60,78 +66,54 @@ public class TaskManager {
 //            return -1;
 //        }
 
-        Job job = fetchJobFromPossibleQueue();
-
-        if( job instanceof ReocurringJob && job.reocurrence == true){
-            for (ReocurringJob reocurringJob :reoccurringJobsArray) {
-                if (reocurringJob.id == job.id){
-                    reocurringJob.lastTimeInitated = ZonedDateTime.now().toInstant().toEpochMilli();
+        while (true){
+            synchronized (lock){
+                while (currentJobAmount == 0) {
+                    lock.wait();
                 }
+
+                Job job = fetchJobFromPossibleQueue();
+
+                if( job instanceof ReocurringJob && job.reocurrence == true){
+                    for (ReocurringJob reocurringJob :reoccurringJobsArray) {
+                        if (reocurringJob.id == job.id){
+                            reocurringJob.lastTimeInitated = ZonedDateTime.now().toInstant().toEpochMilli();
+                        }
+                    }
+                }
+
+                lock.notify();
+                return job;
             }
         }
-
-        return job;
     }
 
-    private Job.Priorty priortyFromInt(int priorty){
-        Job.Priorty jobPriorty;
-        switch (priorty){
-            case 0:
-                jobPriorty = Job.Priorty.LOW;
-                break;
-            case 1:
-                jobPriorty = Job.Priorty.NORMAL;
-                break;
-            case 2:
-                jobPriorty = Job.Priorty.HIGH;
-                break;
-            default:
-                jobPriorty = Job.Priorty.NORMAL;
-                break;
-        }
-        return jobPriorty;
-    }
+
+
+    //Private functionality
 
     private boolean insertJobToCorrectQueque(Job job, Job.Priorty priorty) throws InterruptedException{
 
-        boolean sameJobFound = false;
 
-        if (currentJobAmount >= MAXJOBLIMIT){
-            return false;
-        }
+        while(true){
+            synchronized (lock){
+                while (currentJobAmount == MAXJOBLIMIT){
+                    lock.wait();
+                }
 
-        if (priorty == Job.Priorty.LOW) {
-            for (Job jobCheck :lowPriorityQueue){
-                if (jobCheck.id == job.id) {
-                    sameJobFound = true;
+                if (priorty == Job.Priorty.LOW) {
+                    lowPriorityQueue.put(job);
+                }else if (priorty == Job.Priorty.NORMAL) {
+                    normalPriorityQueue.put(job);
+                }else if (priorty == Job.Priorty.HIGH) {
+                    highPriorityQueue.put(job);
                 }
-            }
-            if (sameJobFound == false) {
-                lowPriorityQueue.put(job);
-            }
-        }else if (priorty == Job.Priorty.NORMAL) {
-            for (Job jobCheck :normalPriorityQueue){
-                if (jobCheck.id == job.id) {
-                    sameJobFound = true;
-                }
-            }
-            if (sameJobFound == false) {
-                normalPriorityQueue.put(job);
-            }
 
-        }else if (priorty == Job.Priorty.HIGH) {
-            for (Job jobCheck :highPriorityQueue){
-                if (jobCheck.id == job.id) {
-                    sameJobFound = true;
-                }
-            }
-            if (sameJobFound == false) {
-                highPriorityQueue.put(job);
+                currentJobAmount++;
+                lock.notify();
+                return true;
             }
         }
-
-        currentJobAmount++;
-        return true;
     }
 
     private Job fetchJobFromPossibleQueue() throws InterruptedException {
@@ -146,8 +128,10 @@ public class TaskManager {
             job = lowPriorityQueue.take();
         }
 
-        currentJobAmount--;
-        return job;
+        synchronized (this){
+            currentJobAmount--;
+            return job;
+        }
     }
 
     //This method will run over reoccurringJobsArray all the time and check if its job's time to execute
@@ -172,6 +156,9 @@ public class TaskManager {
         }).start();
     }
 
+
+    //Utility functionlity
+
     //This method ment to check if the jobs interval has passed
     private boolean checkForExecutionTime(ReocurringJob job){
 
@@ -183,6 +170,25 @@ public class TaskManager {
         }else{
             return false;
         }
+    }
+
+    private Job.Priorty priortyFromInt(int priorty){
+        Job.Priorty jobPriorty;
+        switch (priorty){
+            case 0:
+                jobPriorty = Job.Priorty.LOW;
+                break;
+            case 1:
+                jobPriorty = Job.Priorty.NORMAL;
+                break;
+            case 2:
+                jobPriorty = Job.Priorty.HIGH;
+                break;
+            default:
+                jobPriorty = Job.Priorty.NORMAL;
+                break;
+        }
+        return jobPriorty;
     }
 
 }

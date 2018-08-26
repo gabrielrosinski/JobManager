@@ -16,7 +16,7 @@ public class Main {
                 while (true) {
                     try{
                         Thread.sleep(700);
-                        taskManager.insertJob(random.nextInt(100), random.nextInt(3));
+                        System.out.println("Able to insert new Job: " + taskManager.insertJob(random.nextInt(100), random.nextInt(3)));
                     }catch(InterruptedException e){
                         System.out.println(e);
                     }
